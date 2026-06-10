@@ -364,7 +364,6 @@
             ${r.cook_time?`<span>🔥 ${r.cook_time}</span>`:''}
             ${r.servings?`<span>👥 ${r.servings}</span>`:''}
           </div>
-          ${r.difficulty?`<span class="badge badge-${(r.difficulty||'').toLowerCase()}">${r.difficulty}</span>`:''}
         </div>
       </div>`).join('');
   }
