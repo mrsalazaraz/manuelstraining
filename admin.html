@@ -377,10 +377,21 @@
 
   async function processFile(file, apiKey) {
     log(`📄 Processing: ${file.name}`, 'info');
+    let autoPhoto = null;
     try {
       let text = '';
       if (file.name.endsWith('.pdf')) {
-        text = await extractPDF(file);
+        const extracted = await extractPDF(file);
+        text = extracted.text;
+        if (extracted.imageBlob && !selectedPhoto) {
+          autoPhoto = extracted.imageBlob;
+          log(`📷 Found embedded image in PDF`, 'ok');
+          // Show preview
+          const url = URL.createObjectURL(autoPhoto);
+          document.getElementById('photo-thumb').src = url;
+          document.getElementById('photo-name').textContent = '(from PDF)';
+          document.getElementById('photo-preview').style.display = 'flex';
+        }
       } else if (file.name.endsWith('.docx') || file.name.endsWith('.doc')) {
         text = await extractWord(file);
       } else {
@@ -389,6 +400,12 @@
 
       if (!text.trim()) { log(`⚠️ No text found in ${file.name}`, 'err'); return; }
       log(`✓ Text extracted (${text.length} chars)`, 'ok');
+
+      // If we found a PDF image, temporarily set it as selectedPhoto
+      if (autoPhoto && !selectedPhoto) {
+        autoPhoto = new File([autoPhoto], file.name.replace(/\.pdf$/i, '.jpg'), { type: 'image/jpeg' });
+        selectedPhoto = autoPhoto;
+      }
 
       log(`🤖 Sending to Claude AI for analysis...`, 'info');
       const result = await extractWithClaude(text, docType, apiKey);
@@ -407,12 +424,57 @@
     const buffer = await file.arrayBuffer();
     const pdf = await pdfjsLib.getDocument({ data: buffer }).promise;
     let text = '';
+    let imageBlob = null;
+
     for (let i = 1; i <= pdf.numPages; i++) {
       const page = await pdf.getPage(i);
+
+      // Extract text
       const content = await page.getTextContent();
       text += content.items.map(s => s.str).join(' ') + '\n';
+
+      // Extract first large embedded image (skip if we already found one)
+      if (!imageBlob) {
+        try {
+          const opList = await page.getOperatorList();
+          for (let j = 0; j < opList.fnArray.length; j++) {
+            if (opList.fnArray[j] === pdfjsLib.OPS.paintImageXObject) {
+              const imgName = opList.argsArray[j][0];
+              const img = await new Promise(resolve => {
+                try { page.objs.get(imgName, resolve); }
+                catch(e) { resolve(null); }
+              });
+              // Skip tiny images (icons, bullets, etc.) — only use images 100x100+
+              if (img && img.width >= 100 && img.height >= 100) {
+                const canvas = document.createElement('canvas');
+                canvas.width = img.width;
+                canvas.height = img.height;
+                const ctx = canvas.getContext('2d');
+                const imgData = ctx.createImageData(img.width, img.height);
+                const src = img.data;
+                const dst = imgData.data;
+                if (img.kind === 3) { // RGBA_32BPP
+                  dst.set(src);
+                } else if (img.kind === 2) { // RGB_24BPP
+                  for (let p = 0, q = 0; p < src.length; p += 3, q += 4) {
+                    dst[q] = src[p]; dst[q+1] = src[p+1]; dst[q+2] = src[p+2]; dst[q+3] = 255;
+                  }
+                } else if (img.kind === 1) { // GRAYSCALE_1BPP
+                  for (let p = 0, q = 0; p < src.length; p++, q += 4) {
+                    const v = src[p] ? 255 : 0;
+                    dst[q] = v; dst[q+1] = v; dst[q+2] = v; dst[q+3] = 255;
+                  }
+                } else continue;
+                ctx.putImageData(imgData, 0, 0);
+                imageBlob = await new Promise(resolve => canvas.toBlob(resolve, 'image/jpeg', 0.88));
+                if (imageBlob) break;
+              }
+            }
+          }
+        } catch(e) { /* image extraction optional — ignore failures */ }
+      }
     }
-    return text;
+    return { text, imageBlob };
   }
 
   async function extractWord(file) {
