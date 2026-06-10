@@ -154,6 +154,25 @@
     .stat-card .num { font-size: 1.8rem; font-weight: 700; color: var(--accent); }
     .stat-card .label { font-size: 0.75rem; color: var(--text-muted); text-transform: uppercase; letter-spacing: 0.05em; }
 
+    /* Recipe manager */
+    .recipe-mgr-table { width: 100%; border-collapse: collapse; }
+    .recipe-mgr-table th {
+      text-align: left; font-size: 0.75rem; text-transform: uppercase;
+      letter-spacing: 0.05em; color: var(--text-muted); padding: 0.5rem 0.75rem;
+      border-bottom: 1px solid var(--border);
+    }
+    .recipe-mgr-table td { padding: 0.65rem 0.75rem; border-bottom: 1px solid var(--border); font-size: 0.87rem; vertical-align: middle; }
+    .recipe-mgr-table tr:hover td { background: var(--surface2); }
+    .recipe-thumb { width: 48px; height: 48px; object-fit: cover; border-radius: 6px; border: 1px solid var(--border); }
+    .recipe-thumb-placeholder { width: 48px; height: 48px; border-radius: 6px; border: 1px solid var(--border); background: var(--surface2); display: flex; align-items: center; justify-content: center; font-size: 1.3rem; }
+    .btn-hide { background: #3a2e1a; border: 1px solid #6a4e1a; color: #e0b46b; font-size: 0.78rem; padding: 0.3rem 0.75rem; border-radius: 5px; cursor: pointer; font-weight: 600; transition: all 0.15s; white-space: nowrap; }
+    .btn-hide:hover { background: #4a3e2a; }
+    .btn-show { background: #1a3a1a; border: 1px solid #2a6a2a; color: #6be06b; font-size: 0.78rem; padding: 0.3rem 0.75rem; border-radius: 5px; cursor: pointer; font-weight: 600; transition: all 0.15s; white-space: nowrap; }
+    .btn-show:hover { background: #2a4a2a; }
+    .visible-dot { display: inline-block; width: 8px; height: 8px; border-radius: 50%; margin-right: 0.4rem; }
+    .dot-on { background: #6be06b; }
+    .dot-off { background: #888; }
+
     .spinner {
       display: inline-block; width: 14px; height: 14px;
       border: 2px solid var(--border); border-top-color: var(--accent);
@@ -249,8 +268,17 @@
 
     <div class="log-box" id="log-box"></div>
 
+    <!-- Recipe Management -->
+    <div class="library-header" style="margin-top:2.5rem">
+      <div class="section-title" style="margin:0">Recipe Management</div>
+      <div style="display:flex;gap:0.5rem;align-items:center">
+        <button class="btn btn-ghost" onclick="loadRecipeManager()" style="font-size:0.82rem;padding:0.4rem 0.9rem">↻ Refresh</button>
+      </div>
+    </div>
+    <div id="recipe-manager"></div>
+
     <!-- Document Library -->
-    <div class="library-header">
+    <div class="library-header" style="margin-top:2.5rem">
       <div class="section-title" style="margin:0">Uploaded Documents</div>
       <button class="btn btn-danger" onclick="clearAllData()" style="font-size:0.82rem;padding:0.4rem 0.9rem">Clear All Data</button>
     </div>
@@ -280,6 +308,7 @@
       loadApiKey();
       loadStats();
       loadDocLibrary();
+      loadRecipeManager();
     } else {
       document.getElementById('login-error').style.display = 'block';
     }
@@ -664,6 +693,66 @@ Return ONLY a JSON code block with this exact structure:
       log('✓ All data cleared', 'ok');
     } catch(e) {
       log('✗ Error clearing data: ' + e.message, 'err');
+    }
+  }
+
+  // ── Recipe Manager ──
+  async function loadRecipeManager() {
+    const el = document.getElementById('recipe-manager');
+    el.innerHTML = '<div style="color:var(--text-muted);font-size:0.85rem;padding:1rem 0">Loading...</div>';
+    try {
+      const recipes = await supabase('GET', 'recipes?select=id,name_en,name_es,category_en,image_url,visible&order=name_en.asc');
+      if (!recipes.length) {
+        el.innerHTML = '<div class="empty-library">No recipes in the database yet.</div>';
+        return;
+      }
+      const catEmoji = {'Kitchen Plate Presentation Dishout':'🍽️','Kitchen Plate Presentation Frycook':'🍳','Bar Drinks Presentation':'🍹'};
+      el.innerHTML = `<table class="recipe-mgr-table">
+        <thead><tr><th></th><th>Recipe</th><th>Category</th><th>Status</th><th>Action</th></tr></thead>
+        <tbody>${recipes.map(r => `
+          <tr id="recipe-row-${r.id}">
+            <td>${r.image_url
+              ? `<img class="recipe-thumb" src="${r.image_url}" alt=""/>`
+              : `<div class="recipe-thumb-placeholder">${catEmoji[r.category_en]||'🍴'}</div>`}
+            </td>
+            <td style="font-weight:600">${r.name_en}<br><span style="font-size:0.78rem;color:var(--text-muted);font-weight:400">${r.name_es||''}</span></td>
+            <td style="color:var(--text-muted);font-size:0.82rem">${r.category_en||''}</td>
+            <td>
+              <span class="visible-dot ${r.visible ? 'dot-on' : 'dot-off'}"></span>
+              <span style="font-size:0.82rem;color:${r.visible ? '#6be06b' : 'var(--text-muted)'}">${r.visible ? 'Visible' : 'Hidden'}</span>
+            </td>
+            <td>
+              ${r.visible
+                ? `<button class="btn-hide" onclick="toggleRecipeVisibility(${r.id}, false)">Hide</button>`
+                : `<button class="btn-show" onclick="toggleRecipeVisibility(${r.id}, true)">Show</button>`}
+            </td>
+          </tr>`).join('')}
+        </tbody>
+      </table>`;
+    } catch(e) {
+      el.innerHTML = `<div class="empty-library">Error loading recipes: ${e.message}</div>`;
+    }
+  }
+
+  async function toggleRecipeVisibility(id, visible) {
+    try {
+      await supabase('PATCH', `recipes?id=eq.${id}`, { visible });
+      // Update row in place without full reload
+      const row = document.getElementById(`recipe-row-${id}`);
+      if (row) {
+        const dot = row.querySelector('.visible-dot');
+        const label = row.querySelector('.visible-dot + span');
+        const btn = row.querySelector('button');
+        dot.className = `visible-dot ${visible ? 'dot-on' : 'dot-off'}`;
+        label.textContent = visible ? 'Visible' : 'Hidden';
+        label.style.color = visible ? '#6be06b' : 'var(--text-muted)';
+        btn.className = visible ? 'btn-hide' : 'btn-show';
+        btn.textContent = visible ? 'Hide' : 'Show';
+        btn.setAttribute('onclick', `toggleRecipeVisibility(${id}, ${!visible})`);
+      }
+      loadStats();
+    } catch(e) {
+      alert('Error updating recipe: ' + e.message);
     }
   }
 

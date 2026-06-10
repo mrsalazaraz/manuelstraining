@@ -278,7 +278,7 @@
 
   async function init() {
     const [r, s] = await Promise.all([
-      sbGet('recipes?select=*&order=created_at.asc'),
+      sbGet('recipes?select=*&order=created_at.asc&visible=eq.true'),
       sbGet('sops?select=*&order=created_at.asc')
     ]);
     recipes = Array.isArray(r) ? r : [];
