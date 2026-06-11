@@ -14,6 +14,42 @@
     * { box-sizing: border-box; margin: 0; padding: 0; }
     body { font-family: 'Segoe UI', system-ui, sans-serif; background: var(--bg); color: var(--text); min-height: 100vh; }
 
+    /* Login */
+    #login-screen {
+      display: flex; align-items: center; justify-content: center;
+      min-height: 100vh; padding: 2rem;
+      background: var(--bg);
+    }
+    .login-card {
+      background: var(--surface); border: 1px solid var(--border);
+      border-radius: 16px; padding: 3rem 2.5rem; width: 100%; max-width: 420px;
+      text-align: center; box-shadow: 0 8px 32px rgba(0,0,0,0.1);
+    }
+    .login-logo { font-size: 3rem; margin-bottom: 1rem; }
+    .login-card h1 { font-size: 1.6rem; font-weight: 700; margin-bottom: 0.4rem; }
+    .login-card h1 span { color: var(--accent); }
+    .login-card .welcome { color: var(--text-muted); font-size: 1rem; margin-bottom: 2rem; line-height: 1.6; }
+    .login-card input {
+      width: 100%; background: var(--surface2); border: 1px solid var(--border);
+      color: var(--text); padding: 0.85rem 1.1rem; border-radius: 8px;
+      font-size: 1rem; margin-bottom: 0.85rem; outline: none; text-align: center;
+      letter-spacing: 0.1em; transition: border-color 0.15s;
+    }
+    .login-card input:focus { border-color: var(--accent); box-shadow: 0 0 0 3px rgba(201,168,76,0.15); }
+    .login-card input::placeholder { letter-spacing: normal; color: var(--text-muted); }
+    .login-btn {
+      width: 100%; background: var(--accent); color: #fff; font-weight: 700;
+      padding: 0.85rem 1rem; border-radius: 8px; border: none; cursor: pointer;
+      font-size: 1rem; transition: background 0.15s;
+    }
+    .login-btn:hover { background: var(--accent-light); color: #1a1710; }
+    .login-error {
+      color: #c03030; font-size: 0.85rem; margin-top: 0.75rem;
+      background: #fde0e0; border: 1px solid #f0b0b0; border-radius: 6px;
+      padding: 0.5rem 0.75rem; display: none;
+    }
+    #main-app { display: none; }
+
     header {
       background: var(--surface); border-bottom: 1px solid var(--border);
       padding: 0 1.5rem; display: flex; align-items: center;
@@ -163,6 +199,21 @@
 </head>
 <body>
 
+<!-- LOGIN -->
+<div id="login-screen">
+  <div class="login-card">
+    <div class="login-logo">🌮</div>
+    <h1>Welcome to <span>Manuel's</span></h1>
+    <p class="welcome">This is your training hub for recipes, SOPs, and plating techniques.<br>Please enter the password to continue.</p>
+    <input type="password" id="login-pwd" placeholder="Enter password" onkeydown="if(event.key==='Enter')doLogin()"/>
+    <button class="login-btn" onclick="doLogin()">Sign In</button>
+    <div class="login-error" id="login-error">Incorrect password — please try again.</div>
+  </div>
+</div>
+
+<!-- MAIN APP -->
+<div id="main-app">
+
 <header>
   <div class="logo">Manuel's <span>Training</span></div>
   <nav>
@@ -258,7 +309,35 @@
   </div>
 </div>
 
+</div><!-- /main-app -->
+
 <script>
+  // ── Login ──
+  const SITE_PASSWORD = 'fiesta';
+
+  function doLogin() {
+    const val = document.getElementById('login-pwd').value;
+    if (val === SITE_PASSWORD) {
+      document.getElementById('login-screen').style.display = 'none';
+      document.getElementById('main-app').style.display = 'block';
+      sessionStorage.setItem('mt_auth', '1');
+      init();
+    } else {
+      document.getElementById('login-error').style.display = 'block';
+      document.getElementById('login-pwd').value = '';
+      document.getElementById('login-pwd').focus();
+    }
+  }
+
+  // Check session on load
+  window.addEventListener('DOMContentLoaded', () => {
+    if (sessionStorage.getItem('mt_auth') === '1') {
+      document.getElementById('login-screen').style.display = 'none';
+      document.getElementById('main-app').style.display = 'block';
+      init();
+    }
+  });
+
   const SUPABASE_URL = 'https://dagbgtnmastmcwjpqzvb.supabase.co';
   const SUPABASE_ANON = 'eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6ImRhZ2JndG5tYXN0bWN3anBxenZiIiwicm9sZSI6ImFub24iLCJpYXQiOjE3NzYxODczNTEsImV4cCI6MjA5MTc2MzM1MX0.G_arQB1He1KvcS66JVXwCCKzbpaDPCkXQ5tQuZPGc3I';
 
@@ -514,8 +593,6 @@
   function closeSOPModal() { document.getElementById('sop-overlay').classList.remove('open'); }
 
   document.addEventListener('keydown', e=>{ if(e.key==='Escape'){closeModal();closeSOPModal();} });
-
-  init();
 </script>
 </body>
 </html>
