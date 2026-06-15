@@ -528,8 +528,65 @@
   }
 
   async function extractWord(file) {
-    const result = await mammoth.extractRawText({ arrayBuffer: await file.arrayBuffer() });
-    return result.value;
+    const isLegacyDoc = file.name.toLowerCase().endsWith('.doc') && !file.name.toLowerCase().endsWith('.docx');
+
+    // .docx — use Mammoth (reliable)
+    if (!isLegacyDoc) {
+      const result = await mammoth.extractRawText({ arrayBuffer: await file.arrayBuffer() });
+      return result.value;
+    }
+
+    // .doc binary — scan bytes directly for text
+    return extractLegacyDocText(await file.arrayBuffer());
+  }
+
+  function extractLegacyDocText(buffer) {
+    const bytes = new Uint8Array(buffer);
+    const parts = [];
+
+    // Pass 1: UTF-16LE scan (most .doc text lives here)
+    // Look for runs of printable chars where every other byte is 0x00
+    let run = '';
+    for (let i = 0; i < bytes.length - 1; i += 2) {
+      const lo = bytes[i], hi = bytes[i + 1];
+      if (hi === 0 && lo >= 32 && lo <= 126) {
+        run += String.fromCharCode(lo);
+      } else if (hi === 0 && (lo === 9 || lo === 10 || lo === 13)) {
+        run += ' ';
+      } else {
+        if (run.trim().length > 3) parts.push(run.trim());
+        run = '';
+        i--; // don't skip the odd byte
+      }
+    }
+    if (run.trim().length > 3) parts.push(run.trim());
+
+    // Pass 2: ASCII scan (catches headers, metadata, short strings missed above)
+    let asc = '';
+    for (let i = 0; i < bytes.length; i++) {
+      const b = bytes[i];
+      if (b >= 32 && b <= 126) {
+        asc += String.fromCharCode(b);
+      } else if (b === 9 || b === 10 || b === 13) {
+        asc += ' ';
+      } else {
+        if (asc.trim().length > 4) parts.push(asc.trim());
+        asc = '';
+      }
+    }
+    if (asc.trim().length > 4) parts.push(asc.trim());
+
+    // Deduplicate, keep only parts with real words, join
+    const seen = new Set();
+    const cleaned = parts
+      .filter(p => /[a-zA-Z]{2,}/.test(p) && p.length > 4)
+      .filter(p => { if (seen.has(p)) return false; seen.add(p); return true; });
+
+    const text = cleaned.join('\n');
+    if (text.trim().length < 30) {
+      throw new Error('Could not extract text from this .doc file. Try opening it in Word and saving as .docx, then upload again.');
+    }
+    return text;
   }
 
   async function extractWithClaude(text, type, apiKey) {
