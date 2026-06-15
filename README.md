@@ -1,4 +1,4 @@
-# Manuel's Training App
+# Manuel's Training App 2026
 
 A culinary training web app for recipes and plate presentations.
 
